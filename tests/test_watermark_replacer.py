@@ -121,6 +121,20 @@ class TestReplaceBundleZip(BaseCase):
             self.assertIn("Order #bun-456", laboral)
             self.assertIn("Order #bun-456", juridico)
             self.assertEqual(readme, 'No placeholders here')  # intacto
+            plugin = zf.read('plugin.json').decode()
+            self.assertEqual(plugin, '{"name": "laboralia"}')  # also intact
+
+
+@tagged('-at_install', 'post_install', 'lemon_squeezy_connector')
+class TestReplaceBundleErrors(BaseCase):
+
+    def test_invalid_bundle_format_raises_value_error(self):
+        """bundle_format other than 'zip' or 'tar.gz' must raise ValueError (fail loud)."""
+        with self.assertRaises(ValueError):
+            replace_placeholders_in_bundle_bytes(
+                b"", "unknown",
+                order_id="x", seats=1, despacho_name=None,
+            )
 
 
 @tagged('-at_install', 'post_install', 'lemon_squeezy_connector')

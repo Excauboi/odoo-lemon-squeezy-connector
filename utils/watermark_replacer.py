@@ -32,6 +32,14 @@ def replace_placeholders_in_text(
     Despacho típicamente no están presentes en el SKILL.md Individual.
 
     Para seats>1: sustituye los 3 placeholders.
+
+    Caller contract:
+        - If seats > 1 but despacho_name is None/empty, the SEATS/DESPACHO
+          placeholders are left LITERAL in output (silent no-op). B2.10 download
+          controller must validate license.despacho_name is non-empty before
+          calling this function for seats > 1 licenses.
+        - Caller must ensure order_id and despacho_name do not contain
+          placeholder substrings (curly braces), or idempotency is not guaranteed.
     """
     out = text.replace(PLACEHOLDER_ORDER, order_id)
     if seats > 1 and despacho_name:
@@ -101,6 +109,10 @@ def _rewrite_tar(data: bytes, order_id: str, seats: int, despacho_name: Optional
                 new_info.size = len(modified)
                 new_info.mode = member.mode
                 new_info.mtime = member.mtime
+                new_info.uid = member.uid
+                new_info.gid = member.gid
+                new_info.uname = member.uname
+                new_info.gname = member.gname
                 dst.addfile(new_info, io.BytesIO(modified))
             else:
                 dst.addfile(member, src.extractfile(member) if member.isfile() else None)
