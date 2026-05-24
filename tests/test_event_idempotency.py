@@ -1,5 +1,4 @@
 from odoo.tests import TransactionCase, tagged
-from odoo.exceptions import ValidationError
 
 
 @tagged('-at_install', 'post_install', 'lemon_squeezy_connector')
@@ -15,6 +14,7 @@ class TestLemonSqueezyEventIdempotency(TransactionCase):
         self.assertEqual(ev.event_name, 'order_created')
         self.assertFalse(ev.processed)
         self.assertEqual(ev.payload, {'foo': 'bar'})
+        self.assertIsNotNone(ev.received_at)
 
     def test_event_id_unique_constraint(self):
         self.env['lemon_squeezy.event'].create({
@@ -22,7 +22,7 @@ class TestLemonSqueezyEventIdempotency(TransactionCase):
             'event_name': 'order_created',
             'payload': {},
         })
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception):  # psycopg2 IntegrityError from UNIQUE constraint
             self.env['lemon_squeezy.event'].create({
                 'event_id': 'evt_dupe_001',
                 'event_name': 'order_created',
