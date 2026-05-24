@@ -78,3 +78,15 @@ class TestLicenseLifecycle(TransactionCase):
         lic_active.write({'expires_at': fields.Datetime.now() - timedelta(days=1)})
         # status sigue 'active' pero expires_at pasado → is_active False
         self.assertFalse(lic_active.is_active)
+
+        # Edge case: cancelled status overrides expires_at='future' (most operationally dangerous case)
+        lic_cancel = self.env['lemon_squeezy.license'].create({
+            'license_key': 'lic_cancel_001',
+            'order_id': 'ord_cancel_001',
+            'partner_id': self.partner.id,
+            'seats': 1,
+            'expires_at': fields.Datetime.now() + timedelta(days=30),  # future
+        })
+        self.assertTrue(lic_cancel.is_active)  # active + future expires → True
+        lic_cancel.write({'status': 'cancelled'})
+        self.assertFalse(lic_cancel.is_active)  # cancelled + future expires → False (status override)

@@ -22,6 +22,7 @@ class LemonSqueezyLicense(models.Model):
         ('expired', 'Expirada'),
         ('cancelled', 'Cancelada'),
     ], string='Status', default='active', required=True)
+    # NULL = no expiration (annual/lifetime); B2.9 handler sets on subscription_cancelled
     expires_at = fields.Datetime(string='Expires At')
     # store=False: recompute en acceso es aceptable; almacenar requeriría trigger en reloj
     # B2.10 download controller usa is_active para gatear acceso
