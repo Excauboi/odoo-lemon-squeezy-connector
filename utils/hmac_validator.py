@@ -24,7 +24,7 @@ def validate_lemon_squeezy_signature(
         True si la firma es válida, False en cualquier otro caso (firma vacía,
         None, longitud incorrecta, payload modificado, secret incorrecto).
     """
-    if not signature_header or not secret:
+    if not payload or not signature_header or not secret:
         return False
 
     expected = hmac.new(

@@ -8,7 +8,7 @@ from odoo.addons.lemon_squeezy_connector.utils.hmac_validator import (
 )
 
 
-@tagged('lemon_squeezy_connector', '-at_install', 'post_install')
+@tagged('-at_install', 'post_install', 'lemon_squeezy_connector')
 class TestHmacValidator(BaseCase):
 
     SECRET = "whsec_test_super_secret_string"
@@ -45,8 +45,23 @@ class TestHmacValidator(BaseCase):
             validate_lemon_squeezy_signature(self.PAYLOAD, None, self.SECRET)
         )
 
-    def test_constant_time_comparison(self):
-        """Smoke: function uses hmac.compare_digest (no early exit on first byte mismatch)."""
+    def test_none_payload_fails(self):
+        """payload=None must fail-closed (Python 3.13 hmac.new treats None as b'' — spoofing risk)."""
+        sig = self._compute(self.SECRET, b"")
+        self.assertFalse(
+            validate_lemon_squeezy_signature(None, sig, self.SECRET)
+        )
+
+    def test_empty_payload_fails(self):
+        """payload=b'' must fail-closed (LS never sends empty-body webhooks legitimately)."""
+        sig = self._compute(self.SECRET, b"")
+        self.assertFalse(
+            validate_lemon_squeezy_signature(b"", sig, self.SECRET)
+        )
+
+    def test_last_byte_mismatch_fails(self):
+        """Smoke that hmac.compare_digest is used: a single last-byte change makes the signature fail.
+        Real timing-attack resistance requires statistical timing tests, out of scope for unit tests."""
         # Test indirecto: si la firma cambia solo el último byte, también falla
         sig = self._compute(self.SECRET, self.PAYLOAD)
         wrong_last = sig[:-1] + ('0' if sig[-1] != '0' else '1')
