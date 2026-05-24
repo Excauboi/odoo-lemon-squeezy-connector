@@ -34,6 +34,11 @@
 | 21 | Despacho 11-20 mes | 20 | monthly | `<TBD>` |
 | 22 | Despacho custom mes | — | manual | `<NA mailto>` |
 
+## Notas operativas
+
+- **`variant_name` siempre debe poblarse al cargar el fixture** — aunque el campo es opcional en el modelo, `_rec_name = 'variant_name'` lo usa para mostrar el record en dropdowns y breadcrumbs. Sin él la UI muestra el ID interno.
+- **Filas 11 y 22 (`<NA mailto>`) nunca se insertan como `lemon_squeezy.product_mapping`** — los planes "custom" se gestionan vía flujo email manual fuera de Lemon Squeezy. La columna Billing muestra `manual` solo como descripción funcional; `billing_cycle` Selection del modelo solo acepta `monthly` o `annual`.
+
 ## Cargar en Odoo
 
 Tras rellenar los IDs reales, generar fixture XML en `data/variants_demo.xml` o ejecutar script de carga (no requerido en MVP — Jose puede cargar manualmente en UI Backend).

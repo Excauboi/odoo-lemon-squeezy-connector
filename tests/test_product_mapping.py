@@ -39,3 +39,17 @@ class TestProductMapping(TransactionCase):
         ])
         self.assertEqual(len(found), 1)
         self.assertEqual(found.variant_id, '67890')
+
+    def test_variant_id_unique_constraint(self):
+        # psycopg2 IntegrityError from UNIQUE constraint
+        self.env['lemon_squeezy.product_mapping'].create({
+            'variant_id': '11111',
+            'product_id': self.product.id,
+            'billing_cycle': 'annual',
+        })
+        with self.assertRaises(Exception):
+            self.env['lemon_squeezy.product_mapping'].create({
+                'variant_id': '11111',
+                'product_id': self.product.id,
+                'billing_cycle': 'monthly',
+            })
