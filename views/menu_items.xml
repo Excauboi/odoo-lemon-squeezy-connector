@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem id="menu_lemon_squeezy_root"
+              name="Lemon Squeezy"
+              groups="base.group_system"
+              sequence="50"/>
+
+    <menuitem id="menu_lemon_squeezy_licenses"
+              name="Licencias"
+              parent="menu_lemon_squeezy_root"
+              action="action_lemon_squeezy_license"
+              sequence="10"/>
+
+    <menuitem id="menu_lemon_squeezy_events"
+              name="Eventos webhook"
+              parent="menu_lemon_squeezy_root"
+              action="action_lemon_squeezy_event"
+              sequence="20"/>
+
+    <menuitem id="menu_lemon_squeezy_mapping"
+              name="Product mapping"
+              parent="menu_lemon_squeezy_root"
+              action="action_lemon_squeezy_product_mapping"
+              sequence="30"/>
+
+</odoo>

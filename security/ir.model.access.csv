@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_lemon_squeezy_event_user,lemon_squeezy.event.user,model_lemon_squeezy_event,base.group_user,1,0,0,0
+access_lemon_squeezy_event_manager,lemon_squeezy.event.manager,model_lemon_squeezy_event,base.group_system,1,1,1,1
+access_lemon_squeezy_license_user,lemon_squeezy.license.user,model_lemon_squeezy_license,base.group_user,1,0,0,0
+access_lemon_squeezy_license_manager,lemon_squeezy.license.manager,model_lemon_squeezy_license,base.group_system,1,1,1,1
+access_lemon_squeezy_product_mapping_user,lemon_squeezy.product_mapping.user,model_lemon_squeezy_product_mapping,base.group_user,1,0,0,0
+access_lemon_squeezy_product_mapping_manager,lemon_squeezy.product_mapping.manager,model_lemon_squeezy_product_mapping,base.group_system,1,1,1,1

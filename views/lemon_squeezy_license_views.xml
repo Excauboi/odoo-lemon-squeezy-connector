@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_lemon_squeezy_license_list" model="ir.ui.view">
+        <field name="name">lemon_squeezy.license.list</field>
+        <field name="model">lemon_squeezy.license</field>
+        <field name="arch" type="xml">
+            <list string="Lemon Squeezy Licenses" decoration-success="status=='active'" decoration-muted="status=='cancelled'" decoration-warning="status=='expired'">
+                <field name="create_date"/>
+                <field name="license_key"/>
+                <field name="order_id"/>
+                <field name="partner_id"/>
+                <field name="seats"/>
+                <field name="despacho_name"/>
+                <field name="status" widget="badge"/>
+                <field name="expires_at"/>
+                <field name="is_active" string="Activa?" widget="boolean"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_lemon_squeezy_license_form" model="ir.ui.view">
+        <field name="name">lemon_squeezy.license.form</field>
+        <field name="model">lemon_squeezy.license</field>
+        <field name="arch" type="xml">
+            <form string="Lemon Squeezy License">
+                <header>
+                    <field name="status" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="license_key"/>
+                            <field name="order_id"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group>
+                            <field name="seats"/>
+                            <field name="despacho_name"/>
+                            <field name="expires_at"/>
+                            <field name="is_active" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_lemon_squeezy_license" model="ir.actions.act_window">
+        <field name="name">Lemon Squeezy Licenses</field>
+        <field name="res_model">lemon_squeezy.license</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>

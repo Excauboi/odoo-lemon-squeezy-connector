@@ -26,12 +26,11 @@ Reusable: cualquier instalación Odoo 19 que monetice mediante Lemon Squeezy.
     'license': 'LGPL-3',
     'depends': ['base', 'web', 'sale', 'account', 'contacts'],
     'data': [
-        # Temporarily empty — views + security added in B2.5 when files are created
-        # 'security/ir.model.access.csv',
-        # 'views/lemon_squeezy_event_views.xml',
-        # 'views/lemon_squeezy_license_views.xml',
-        # 'views/lemon_squeezy_product_mapping_views.xml',
-        # 'views/menu_items.xml',
+        'security/ir.model.access.csv',
+        'views/lemon_squeezy_event_views.xml',
+        'views/lemon_squeezy_license_views.xml',
+        'views/lemon_squeezy_product_mapping_views.xml',
+        'views/menu_items.xml',
     ],
     'installable': True,
     'application': False,

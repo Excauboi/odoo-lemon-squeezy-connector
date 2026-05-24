@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_lemon_squeezy_event_list" model="ir.ui.view">
+        <field name="name">lemon_squeezy.event.list</field>
+        <field name="model">lemon_squeezy.event</field>
+        <field name="arch" type="xml">
+            <list string="Lemon Squeezy Events" decoration-success="processed==True" decoration-danger="processing_error!=False and processing_error!=''">
+                <field name="received_at"/>
+                <field name="event_id"/>
+                <field name="event_name"/>
+                <field name="processed" widget="boolean_toggle"/>
+                <field name="related_partner_id"/>
+                <field name="related_sale_order_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_lemon_squeezy_event_form" model="ir.ui.view">
+        <field name="name">lemon_squeezy.event.form</field>
+        <field name="model">lemon_squeezy.event</field>
+        <field name="arch" type="xml">
+            <form string="Lemon Squeezy Event">
+                <header>
+                    <field name="processed" widget="boolean_toggle"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="event_id" readonly="1"/>
+                            <field name="event_name" readonly="1"/>
+                            <field name="received_at" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="related_partner_id"/>
+                            <field name="related_sale_order_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Payload">
+                            <field name="payload" widget="ace" options="{'mode': 'json'}"/>
+                        </page>
+                        <page string="Processing">
+                            <field name="processing_error"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_lemon_squeezy_event_search" model="ir.ui.view">
+        <field name="name">lemon_squeezy.event.search</field>
+        <field name="model">lemon_squeezy.event</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="event_id"/>
+                <field name="event_name"/>
+                <filter name="unprocessed" string="No procesados" domain="[('processed','=',False)]"/>
+                <filter name="errors" string="Con error" domain="[('processing_error','!=',False)]"/>
+                <group>
+                    <filter name="group_by_event_name" string="Evento" context="{'group_by':'event_name'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_lemon_squeezy_event" model="ir.actions.act_window">
+        <field name="name">Lemon Squeezy Events</field>
+        <field name="res_model">lemon_squeezy.event</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_lemon_squeezy_event_search"/>
+    </record>
+
+</odoo>

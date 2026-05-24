@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_lemon_squeezy_product_mapping_list" model="ir.ui.view">
+        <field name="name">lemon_squeezy.product_mapping.list</field>
+        <field name="model">lemon_squeezy.product_mapping</field>
+        <field name="arch" type="xml">
+            <list string="LS Product Mapping">
+                <field name="variant_id"/>
+                <field name="variant_name"/>
+                <field name="product_id"/>
+                <field name="seats"/>
+                <field name="billing_cycle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_lemon_squeezy_product_mapping_form" model="ir.ui.view">
+        <field name="name">lemon_squeezy.product_mapping.form</field>
+        <field name="model">lemon_squeezy.product_mapping</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="variant_id"/>
+                        <field name="variant_name"/>
+                        <field name="product_id"/>
+                        <field name="seats"/>
+                        <field name="billing_cycle"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_lemon_squeezy_product_mapping" model="ir.actions.act_window">
+        <field name="name">LS Product Mapping</field>
+        <field name="res_model">lemon_squeezy.product_mapping</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>
