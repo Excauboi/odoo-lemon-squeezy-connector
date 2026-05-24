@@ -11,12 +11,12 @@ Flujo:
    (evitar placeholders literales en output)
 4. replace_placeholders_in_bundle_bytes en try/except → 500 si
    bundle malformado (BadZipFile / tarfile.ReadError)
-5. Crear lemon_squeezy.event log (event_name='download')
+5. Crear lemon_squeezy.event log (event_name='download', event_id con secrets.token_hex suffix)
 6. make_response con application/zip + Content-Disposition attachment
 """
 import base64
 import logging
-from datetime import datetime, timezone
+import secrets
 
 from odoo import http
 from odoo.http import request
@@ -100,9 +100,8 @@ class LemonSqueezyDownloadController(http.Controller):
             )
 
         # 5. Log download event
-        ts = datetime.now(timezone.utc).isoformat()
         request.env['lemon_squeezy.event'].sudo().create({
-            'event_id': f'dl_{license_key}_{ts}',
+            'event_id': f'dl_{license_key}_{secrets.token_hex(4)}',
             'event_name': 'download',
             'payload': {
                 'license_key': license_key,

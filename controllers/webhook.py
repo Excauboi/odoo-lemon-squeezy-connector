@@ -8,6 +8,7 @@ POST /lemon_squeezy/webhook
 """
 import json
 import logging
+import secrets
 
 from psycopg2 import IntegrityError as PsycopgIntegrityError
 
@@ -18,15 +19,17 @@ from ..utils.hmac_validator import validate_lemon_squeezy_signature
 
 _logger = logging.getLogger(__name__)
 
-# Mapping event_name → handler method name del controller
-KNOWN_EVENTS = {
+# Supported event_name → handler method (dispatched via getattr in _route_event).
+# Listed here for documentation; not used in dispatch logic.
+# Adding a 7th handler: define _handle_<event_name> on the controller class.
+SUPPORTED_EVENTS_DOC = (
     'order_created',
     'subscription_created',
     'subscription_updated',
     'subscription_payment_success',
     'subscription_payment_failed',
     'subscription_cancelled',
-}
+)
 
 
 class LemonSqueezyWebhookController(http.Controller):
@@ -56,6 +59,13 @@ class LemonSqueezyWebhookController(http.Controller):
         if signature:
             signature = signature.strip()  # B2.6 tracker: edge case whitespace en HTTP headers
         body = request.httprequest.get_data()  # bytes raw
+        if len(body) > 65_536:  # 64 KB cap — LS webhooks never approach this
+            _logger.warning("LS webhook: payload too large (%d bytes)", len(body))
+            return request.make_response(
+                json.dumps({'error': 'payload_too_large'}),
+                status=413,
+                headers=[('Content-Type', 'application/json')],
+            )
 
         if not validate_lemon_squeezy_signature(body, signature, secret):
             _logger.warning("LS webhook: firma HMAC inválida (signature=%.32s...)", signature or '')
@@ -168,7 +178,6 @@ class LemonSqueezyWebhookController(http.Controller):
         )
 
     def _generate_license_key(self, order_id):
-        import secrets
         return f"lic_{order_id}_{secrets.token_urlsafe(16)}"
 
     # ── Event handlers ───────────────────────────────────────────────────────
