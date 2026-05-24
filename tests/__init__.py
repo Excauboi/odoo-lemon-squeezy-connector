@@ -7,3 +7,4 @@ from . import test_webhook_controller
 from . import test_handler_order_created
 from . import test_handler_subscription_lifecycle
 from . import test_download_controller
+from . import test_integration_e2e
