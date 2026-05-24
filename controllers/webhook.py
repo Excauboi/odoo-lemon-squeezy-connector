@@ -243,37 +243,47 @@ class LemonSqueezyWebhookController(http.Controller):
         license = request.env['lemon_squeezy.license'].sudo().search(
             [('order_id', '=', order_id)], limit=1
         )
-        if license:
-            license.write({'status': 'active'})
-            event_log.write({'related_partner_id': license.partner_id.id})
+        if not license:
+            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            return
+        license.write({'status': 'active'})
+        event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_payment_failed(self, event_log, payload):
         order_id = str(payload['data']['attributes'].get('order_id', ''))
         license = request.env['lemon_squeezy.license'].sudo().search(
             [('order_id', '=', order_id)], limit=1
         )
-        if license:
-            res_model_id = request.env['ir.model'].sudo().search(
-                [('model', '=', 'res.partner')], limit=1
-            ).id
-            request.env['mail.activity'].sudo().create({
-                'res_model_id': res_model_id,
-                'res_id': license.partner_id.id,
-                'activity_type_id': request.env.ref('mail.mail_activity_data_todo').id,
-                'summary': f'LS payment failed — Order {order_id}',
-                'note': f'Lemon Squeezy reportó subscription_payment_failed para license {license.license_key}. Revisar.',
-                'user_id': request.env.user.id,
-            })
-            event_log.write({'related_partner_id': license.partner_id.id})
+        if not license:
+            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            return
+        res_model_id = request.env['ir.model'].sudo().search(
+            [('model', '=', 'res.partner')], limit=1
+        ).id
+        request.env['mail.activity'].sudo().create({
+            'res_model_id': res_model_id,
+            'res_id': license.partner_id.id,
+            'activity_type_id': request.env.ref('mail.mail_activity_data_todo').id,
+            'summary': f'LS payment failed — Order {order_id}',
+            'note': f'Lemon Squeezy reportó subscription_payment_failed para license {license.license_key}. Revisar.',
+            'user_id': int(
+                request.env['ir.config_parameter'].sudo().get_param(
+                    'lemon_squeezy.notify_user_id', 1
+                )
+            ),
+        })
+        event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_cancelled(self, event_log, payload):
         order_id = str(payload['data']['attributes'].get('order_id', ''))
         license = request.env['lemon_squeezy.license'].sudo().search(
             [('order_id', '=', order_id)], limit=1
         )
-        if license:
-            license.write({'status': 'cancelled'})
-            event_log.write({'related_partner_id': license.partner_id.id})
+        if not license:
+            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            return
+        license.write({'status': 'cancelled'})
+        event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_updated(self, event_log, payload):
         """Upgrade seats: crear nuevo sale.order con prorrata + actualizar license.seats."""
@@ -282,7 +292,11 @@ class LemonSqueezyWebhookController(http.Controller):
         license = request.env['lemon_squeezy.license'].sudo().search(
             [('order_id', '=', order_id)], limit=1
         )
-        if not license or not new_variant_id:
+        if not license:
+            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            return
+        if not new_variant_id:
+            event_log.write({'processing_error': f'missing_variant_id_for_order_{order_id}'})
             return
         new_mapping = self._get_mapping_for_variant(new_variant_id)
         if new_mapping and new_mapping.seats != license.seats:
