@@ -4,3 +4,5 @@ from . import test_license_lifecycle
 from . import test_hmac_validator
 from . import test_watermark_replacer
 from . import test_webhook_controller
+from . import test_handler_order_created
+from . import test_handler_subscription_lifecycle

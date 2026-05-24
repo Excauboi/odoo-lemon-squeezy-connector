@@ -137,14 +137,168 @@ class LemonSqueezyWebhookController(http.Controller):
         )
 
     def _route_event(self, event_log, event_name, payload):
-        """Routing event_name → handler. Implementación detallada en B2.9 (handlers).
-
-        En B2.8 solo se loggea unknown events para que tests de idempotency + auth pasen.
-        """
-        if event_name not in KNOWN_EVENTS:
-            event_log.write({'processing_error': f'unknown_event: {event_name}'})
-            _logger.info("LS webhook: evento %s desconocido (no handler)", event_name)
+        """Routing event_name → handler via getattr dispatch (B2.9)."""
+        handler = getattr(self, f'_handle_{event_name}', None)
+        if not handler:
+            event_log.write({'processing_error': f'no_handler_for_{event_name}'})
+            _logger.info("LS webhook: %s sin handler", event_name)
             return
-        # Los handlers reales se cablean en B2.9
-        # Por ahora marcamos como processed sin acción
-        _logger.info("LS webhook: %s recibido (handler pendiente B2.9)", event_name)
+        handler(event_log, payload)
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _get_or_create_partner(self, attrs):
+        email = attrs.get('user_email')
+        name = attrs.get('user_name') or email
+        if not email:
+            raise ValueError("Payload sin user_email")
+        Partner = request.env['res.partner'].sudo()
+        partner = Partner.search([('email', '=', email)], limit=1)
+        if not partner:
+            partner = Partner.create({
+                'name': name,
+                'email': email,
+                'customer_rank': 1,
+            })
+        return partner
+
+    def _get_mapping_for_variant(self, variant_id):
+        return request.env['lemon_squeezy.product_mapping'].sudo().search(
+            [('variant_id', '=', str(variant_id))], limit=1
+        )
+
+    def _generate_license_key(self, order_id):
+        import secrets
+        return f"lic_{order_id}_{secrets.token_urlsafe(16)}"
+
+    # ── Event handlers ───────────────────────────────────────────────────────
+
+    def _handle_order_created(self, event_log, payload):
+        data = payload['data']['attributes']
+        order_id = str(payload['data']['id'])
+        first_item = data.get('first_order_item', {})
+        variant_id = str(first_item.get('variant_id', ''))
+
+        mapping = self._get_mapping_for_variant(variant_id)
+        if not mapping:
+            raise ValueError(f"No product_mapping for variant_id={variant_id}")
+
+        partner = self._get_or_create_partner(data)
+
+        # Idempotencia por order_id (LS puede reenviar order_created si pasa algo)
+        existing_lic = request.env['lemon_squeezy.license'].sudo().search(
+            [('order_id', '=', order_id)], limit=1
+        )
+        if existing_lic:
+            event_log.write({
+                'related_partner_id': partner.id,
+                'processing_error': f'duplicate_order_id_{order_id}',
+            })
+            return
+
+        # Crear sale.order confirmed
+        SaleOrder = request.env['sale.order'].sudo()
+        so = SaleOrder.create({
+            'partner_id': partner.id,
+            'order_line': [(0, 0, {
+                'product_id': mapping.product_id.id,
+                'product_uom_qty': 1,
+                'price_unit': data.get('subtotal', 0) / 100.0,  # LS centimos
+            })],
+            'origin': f'LS Order {order_id}',
+        })
+        so.action_confirm()
+
+        # Crear license
+        license_key = self._generate_license_key(order_id)
+        request.env['lemon_squeezy.license'].sudo().create({
+            'license_key': license_key,
+            'order_id': order_id,
+            'partner_id': partner.id,
+            'seats': mapping.seats,
+            'despacho_name': partner.name if mapping.seats > 1 else False,
+            'status': 'active',
+        })
+
+        event_log.write({
+            'related_partner_id': partner.id,
+            'related_sale_order_id': so.id,
+        })
+
+    def _handle_subscription_created(self, event_log, payload):
+        # Buscar sale.order del order_created previo (LS dispara order_created + subscription_created)
+        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        if not order_id:
+            raise ValueError("subscription_created sin order_id")
+        license = request.env['lemon_squeezy.license'].sudo().search(
+            [('order_id', '=', order_id)], limit=1
+        )
+        if not license:
+            raise ValueError(f"subscription_created: license not found for order {order_id}")
+        # Para MVP, basta con confirmar que la license está active + log
+        event_log.write({'related_partner_id': license.partner_id.id})
+
+    def _handle_subscription_payment_success(self, event_log, payload):
+        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        license = request.env['lemon_squeezy.license'].sudo().search(
+            [('order_id', '=', order_id)], limit=1
+        )
+        if license:
+            license.write({'status': 'active'})
+            event_log.write({'related_partner_id': license.partner_id.id})
+
+    def _handle_subscription_payment_failed(self, event_log, payload):
+        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        license = request.env['lemon_squeezy.license'].sudo().search(
+            [('order_id', '=', order_id)], limit=1
+        )
+        if license:
+            res_model_id = request.env['ir.model'].sudo().search(
+                [('model', '=', 'res.partner')], limit=1
+            ).id
+            request.env['mail.activity'].sudo().create({
+                'res_model_id': res_model_id,
+                'res_id': license.partner_id.id,
+                'activity_type_id': request.env.ref('mail.mail_activity_data_todo').id,
+                'summary': f'LS payment failed — Order {order_id}',
+                'note': f'Lemon Squeezy reportó subscription_payment_failed para license {license.license_key}. Revisar.',
+                'user_id': request.env.user.id,
+            })
+            event_log.write({'related_partner_id': license.partner_id.id})
+
+    def _handle_subscription_cancelled(self, event_log, payload):
+        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        license = request.env['lemon_squeezy.license'].sudo().search(
+            [('order_id', '=', order_id)], limit=1
+        )
+        if license:
+            license.write({'status': 'cancelled'})
+            event_log.write({'related_partner_id': license.partner_id.id})
+
+    def _handle_subscription_updated(self, event_log, payload):
+        """Upgrade seats: crear nuevo sale.order con prorrata + actualizar license.seats."""
+        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        new_variant_id = str(payload['data']['attributes'].get('variant_id', ''))
+        license = request.env['lemon_squeezy.license'].sudo().search(
+            [('order_id', '=', order_id)], limit=1
+        )
+        if not license or not new_variant_id:
+            return
+        new_mapping = self._get_mapping_for_variant(new_variant_id)
+        if new_mapping and new_mapping.seats != license.seats:
+            license.write({'seats': new_mapping.seats})
+            SaleOrder = request.env['sale.order'].sudo()
+            so = SaleOrder.create({
+                'partner_id': license.partner_id.id,
+                'order_line': [(0, 0, {
+                    'product_id': new_mapping.product_id.id,
+                    'product_uom_qty': 1,
+                    'price_unit': new_mapping.product_id.list_price,
+                })],
+                'origin': f'LS Subscription Update {order_id}',
+            })
+            so.action_confirm()
+            event_log.write({
+                'related_partner_id': license.partner_id.id,
+                'related_sale_order_id': so.id,
+            })
