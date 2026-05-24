@@ -114,3 +114,4 @@ class TestWebhookController(HttpCase):
         event = self.env['lemon_squeezy.event'].search([('event_id', '=', 'evt_unknown_001')])
         self.assertTrue(event)
         self.assertTrue(event.processed)  # marcado processed aunque sin handler
+        self.assertEqual(event.processing_error, 'unknown_event: unknown_event_type')

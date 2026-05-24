@@ -9,6 +9,8 @@ POST /lemon_squeezy/webhook
 import json
 import logging
 
+from psycopg2 import IntegrityError as PsycopgIntegrityError
+
 from odoo import http
 from odoo.http import request
 
@@ -56,7 +58,7 @@ class LemonSqueezyWebhookController(http.Controller):
         body = request.httprequest.get_data()  # bytes raw
 
         if not validate_lemon_squeezy_signature(body, signature, secret):
-            _logger.warning("LS webhook: firma HMAC inválida (signature=%s)", signature)
+            _logger.warning("LS webhook: firma HMAC inválida (signature=%.32s...)", signature or '')
             return request.make_response(
                 json.dumps({'error': 'invalid_signature'}),
                 status=401,
@@ -98,13 +100,23 @@ class LemonSqueezyWebhookController(http.Controller):
                 headers=[('Content-Type', 'application/json')],
             )
 
-        # 4. Crear log evento
-        event_log = request.env['lemon_squeezy.event'].sudo().create({
-            'event_id': event_id,
-            'event_name': event_name,
-            'payload': payload,
-            'processed': False,
-        })
+        # 4. Crear log evento (idempotencia race-safe via IntegrityError catch)
+        try:
+            event_log = request.env['lemon_squeezy.event'].sudo().create({
+                'event_id': event_id,
+                'event_name': event_name,
+                'payload': payload,
+                'processed': False,
+            })
+        except PsycopgIntegrityError:
+            # Race: otro worker creó el event_id entre nuestro search y create.
+            # Tratar como already_processed — respuesta idempotente, sin retry LS.
+            _logger.info("LS webhook: race idempotency para %s, descartado", event_id)
+            return request.make_response(
+                json.dumps({'status': 'already_processed'}),
+                status=200,
+                headers=[('Content-Type', 'application/json')],
+            )
 
         # 5. Routing: handler por event_name (implementado en B2.9)
         try:
