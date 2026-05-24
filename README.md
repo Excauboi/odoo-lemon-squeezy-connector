@@ -38,6 +38,27 @@ Ver `controllers/webhook.py` para mapping completo evento -> acción Odoo.
 docker compose exec odoo odoo -d <db> -i lemon_squeezy_connector --test-enable --stop-after-init --test-tags lemon_squeezy_connector
 ```
 
+## Production hardening (post-MVP)
+
+Para despliegue producción más allá de single-tenant Jose, considerar:
+
+### Seguridad
+
+- **Rotar `lemon_squeezy.webhook_secret` periódicamente** o si el DB dump se comparte fuera del equipo dev. El secret se almacena en `ir.config_parameter` plain text — accesible para cualquier dump del DB.
+- **`license_key` es sensible** — la URL `/laboralia/download/<license_key>` da acceso directo a la descarga. Tratar como contraseña en logs, emails, browser history.
+- **Rate limiting**: el endpoint webhook (`/lemon_squeezy/webhook`) no tiene rate limit en Odoo. Configurar regla CF WAF en producción (recomendado: 30 req/min por IP).
+- **Body size cap** (~64KB en código) protege OOM ante atacantes; LS webhooks reales son <5KB.
+
+### Operaciones
+
+- Configurar `lemon_squeezy.notify_user_id` (ir.config_parameter) con el user_id del admin que debe ver las activities de `subscription_payment_failed`. Default `1` (SUPERUSER).
+- Backup periódico de la BD: las licenses + event log son críticas — sin licenses no hay downloads, sin events no hay audit trail.
+
+### Monitoring
+
+- Watch `lemon_squeezy.event` con `processing_error != False` — son los gaps que requieren atención manual.
+- Watch `mail.activity` to-do sobre `res.partner` con summary `LS payment failed —` — son los renewals fallidos.
+
 ## Licencia
 
 LGPL-3.0-or-later. Ver `LICENSE`.
