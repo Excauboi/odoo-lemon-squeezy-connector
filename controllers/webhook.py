@@ -179,6 +179,88 @@ class LemonSqueezyWebhookController(http.Controller):
             [('variant_id', '=', str(variant_id))], limit=1
         )
 
+    def _get_or_create_ls_partner(self):
+        """Get or create the 'Lemon Squeezy' merchant partner for internal MoR invoicing.
+
+        LS is the Merchant of Record; the connector creates internal account.move
+        invoices payable to LS for each customer order. This partner represents LS
+        in Odoo accounting.
+
+        Configurable via ir.config_parameter 'lemon_squeezy.merchant_partner_id' (id, cached).
+        If unset or invalid, looks up by name (default 'Lemon Squeezy Inc.') or creates.
+        Caches the id back to config_parameter for future calls.
+        """
+        Param = request.env['ir.config_parameter'].sudo()
+        Partner = request.env['res.partner'].sudo()
+
+        cached_id = Param.get_param('lemon_squeezy.merchant_partner_id')
+        if cached_id:
+            partner = Partner.browse(int(cached_id))
+            if partner.exists():
+                return partner
+
+        name = Param.get_param('lemon_squeezy.merchant_partner_name') or 'Lemon Squeezy Inc.'
+        partner = Partner.search(
+            [('name', '=', name), ('is_company', '=', True)], limit=1
+        )
+        if not partner:
+            partner = Partner.create({
+                'name': name,
+                'is_company': True,
+                'customer_rank': 1,
+                'comment': 'Merchant of Record para ventas vía Lemon Squeezy. '
+                           'Factura emitida a este partner por cada order_created (v0.4.0+).',
+            })
+        Param.set_param('lemon_squeezy.merchant_partner_id', str(partner.id))
+        return partner
+
+    def _create_internal_ls_invoice(self, order_id, customer_partner, mapping, subtotal_cents):
+        """Crea account.move borrador interna a LS por una venta MoR.
+
+        El cliente final (customer_partner) se referencia en `ref` para tracking,
+        pero el partner_id de la factura es LS (Merchant of Record).
+
+        Auto-post configurable via ir.config_parameter 'lemon_squeezy.invoice_auto_post'
+        (default 'false' = stays draft for Jose's monthly reconciliation review).
+
+        Returns: account.move record.
+        Raises: ValueError if no sale journal found in current company.
+        """
+        ls_partner = self._get_or_create_ls_partner()
+
+        journal = request.env['account.journal'].sudo().search(
+            [('type', '=', 'sale'), ('company_id', '=', request.env.company.id)],
+            limit=1,
+        )
+        if not journal:
+            raise ValueError(
+                f"No sale journal found for company {request.env.company.name!r}"
+            )
+
+        customer_ref = f'Cliente final: {customer_partner.name}'
+        if customer_partner.email:
+            customer_ref += f' <{customer_partner.email}>'
+
+        move = request.env['account.move'].sudo().create({
+            'move_type': 'out_invoice',
+            'partner_id': ls_partner.id,
+            'journal_id': journal.id,
+            'invoice_origin': f'LS Order {order_id}',
+            'ref': customer_ref,
+            'invoice_line_ids': [(0, 0, {
+                'product_id': mapping.product_id.id,
+                'quantity': 1.0,
+                'price_unit': subtotal_cents / 100.0,
+            })],
+        })
+
+        Param = request.env['ir.config_parameter'].sudo()
+        auto_post = Param.get_param('lemon_squeezy.invoice_auto_post', 'false').lower() in ('true', '1', 'yes')
+        if auto_post:
+            move.action_post()
+
+        return move
+
     def _generate_license_key(self, order_id):
         return f"lic_{order_id}_{secrets.token_urlsafe(16)}"
 
@@ -267,6 +349,27 @@ class LemonSqueezyWebhookController(http.Controller):
             'related_partner_id': partner.id,
             'related_sale_order_id': so.id,
         })
+
+        # v0.4.0: Crear factura interna a LS (Opción A — LS sigue MoR, esto es factura
+        # de Jose a LS por la venta MoR). Falla soft: si crea sale.order + license OK
+        # pero la factura falla, el evento NO retry, admin la crea manualmente.
+        try:
+            invoice = self._create_internal_ls_invoice(
+                order_id=order_id,
+                customer_partner=partner,
+                mapping=mapping,
+                subtotal_cents=data.get('subtotal', 0),
+            )
+            _logger.info(
+                "LS connector: factura interna creada %s para order %s",
+                invoice.name, order_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception(
+                "LS connector: error creando factura interna LS para order %s: %s",
+                order_id, exc,
+            )
+            # No raise — la venta + license están OK. Admin crea factura manual.
 
     def _handle_subscription_created(self, event_log, payload):
         # Buscar sale.order del order_created previo (LS dispara order_created + subscription_created)

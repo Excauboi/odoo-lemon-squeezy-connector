@@ -89,6 +89,12 @@ class TestHandlerOrderCreated(TransactionCase):
         self.assertEqual(event_log_fresh.related_partner_id, partners)
         self.assertEqual(event_log_fresh.related_sale_order_id, sale_orders)
 
+        # v0.4.0: order_created también dispara factura interna a LS
+        invoice = self.env['account.move'].search([('invoice_origin', '=', 'LS Order 1234567')])
+        self.assertEqual(len(invoice), 1)
+        ls_partner = self.env['res.partner'].search([('name', '=', 'Lemon Squeezy Inc.')], limit=1)
+        self.assertEqual(invoice.partner_id, ls_partner)
+
     def test_order_created_idempotent_by_order_id(self):
         """Si ya existe license con order_id, no crea sale.order duplicada."""
         from odoo.addons.lemon_squeezy_connector.controllers.webhook import (
