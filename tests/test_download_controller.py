@@ -44,7 +44,7 @@ _Generado por LABORALIA · Order #{ORDER_ID_PLACEHOLDER} · ...
         return buf.getvalue()
 
     def test_download_404_unknown_license(self):
-        r = self.url_open('/laboralia/download/nonexistent_key_xyz')
+        r = self.url_open('/lemon_squeezy/download/nonexistent_key_xyz')
         self.assertEqual(r.status_code, 404)
 
     def test_download_404_cancelled_license(self):
@@ -55,7 +55,7 @@ _Generado por LABORALIA · Order #{ORDER_ID_PLACEHOLDER} · ...
             'seats': 1,
             'status': 'cancelled',
         })
-        r = self.url_open('/laboralia/download/lic_cancelled_001')
+        r = self.url_open('/lemon_squeezy/download/lic_cancelled_001')
         self.assertEqual(r.status_code, 404)
 
     def test_download_serves_zip_with_watermark_individual(self):
@@ -66,7 +66,7 @@ _Generado por LABORALIA · Order #{ORDER_ID_PLACEHOLDER} · ...
             'seats': 1,
             'status': 'active',
         })
-        r = self.url_open('/laboralia/download/lic_active_001')
+        r = self.url_open('/lemon_squeezy/download/lic_active_001')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get('Content-Type'), 'application/zip')
         self.assertIn('attachment', r.headers.get('Content-Disposition', ''))
@@ -87,7 +87,7 @@ _Generado por LABORALIA · Order #{ORDER_ID_PLACEHOLDER} · ...
             'seats': 1,
             'status': 'active',
         })
-        self.url_open('/laboralia/download/lic_log_001')
+        self.url_open('/lemon_squeezy/download/lic_log_001')
         self.env.invalidate_all()
         events = self.env['lemon_squeezy.event'].sudo().search([
             ('event_name', '=', 'download'),

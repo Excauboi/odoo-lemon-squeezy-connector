@@ -1,7 +1,7 @@
-"""Controller de descarga de bundles LABORALIA.
+"""Controller de descarga de bundles Lemon Squeezy.
 
 Endpoint público con license_key gating:
-    GET /laboralia/download/<license_key>
+    GET /lemon_squeezy/download/<license_key>
 
 Flujo:
 1. Lookup license: status='active' AND is_active=True → 404 si no
@@ -29,7 +29,7 @@ _logger = logging.getLogger(__name__)
 class LemonSqueezyDownloadController(http.Controller):
 
     @http.route(
-        '/laboralia/download/<string:license_key>',
+        '/lemon_squeezy/download/<string:license_key>',
         type='http',
         auth='public',
         methods=['GET'],
@@ -114,7 +114,7 @@ class LemonSqueezyDownloadController(http.Controller):
 
         # 6. Responder con el bundle modificado
         content_type = 'application/zip' if fmt == 'zip' else 'application/gzip'
-        filename = f'laboralia-{lic.order_id}.{fmt}'
+        filename = f'bundle-{lic.order_id}.{fmt}'
         return request.make_response(
             modified_bytes,
             headers=[
