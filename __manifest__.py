@@ -1,6 +1,6 @@
 {
     'name': 'Lemon Squeezy Connector',
-    'version': '19.0.2.0.0',
+    'version': '19.0.3.0.0',
     'category': 'Sales/Subscriptions',
     'summary': 'Pasarela Lemon Squeezy (Merchant of Record) <-> Odoo: webhooks + licencias + watermark dinámico',
     'description': """
@@ -32,6 +32,7 @@ Reusable: cualquier instalación Odoo 19 que monetice mediante Lemon Squeezy.
         'views/lemon_squeezy_product_mapping_views.xml',
         'views/menu_items.xml',
     ],
+    'post_init_hook': '_post_init_default_billing_cycle',
     'installable': True,
     'application': False,
     'auto_install': False,

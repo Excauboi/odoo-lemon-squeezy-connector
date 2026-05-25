@@ -9,7 +9,9 @@ POST /lemon_squeezy/webhook
 import json
 import logging
 import secrets
+from datetime import datetime, timezone
 
+from dateutil.relativedelta import relativedelta
 from psycopg2 import IntegrityError as PsycopgIntegrityError
 
 from odoo import http
@@ -180,6 +182,26 @@ class LemonSqueezyWebhookController(http.Controller):
     def _generate_license_key(self, order_id):
         return f"lic_{order_id}_{secrets.token_urlsafe(16)}"
 
+    def _extend_expires_at(self, license_rec):
+        """Extend license.expires_at by 1 billing cycle.
+
+        If current expires_at is past, extend from now (graceful recovery from
+        late payment_success). Otherwise extend from current expires_at (don't
+        lose days from early renewal).
+        """
+        now = datetime.now(timezone.utc)
+        # Odoo stores naive UTC datetimes; convert now to naive for comparison
+        now_naive = now.replace(tzinfo=None)
+        current = license_rec.expires_at or now_naive
+        base = current if current > now_naive else now_naive
+        if license_rec.billing_cycle == 'annual':
+            new_expires = base + relativedelta(years=1)
+        elif license_rec.billing_cycle == 'monthly':
+            new_expires = base + relativedelta(months=1)
+        else:
+            raise ValueError(f"Unknown billing_cycle: {license_rec.billing_cycle!r}")
+        license_rec.write({'expires_at': new_expires})
+
     # ── Event handlers ───────────────────────────────────────────────────────
 
     def _handle_order_created(self, event_log, payload):
@@ -218,6 +240,16 @@ class LemonSqueezyWebhookController(http.Controller):
         })
         so.action_confirm()
 
+        # Compute initial expires_at from billing cycle (B2.12 v0.3.0)
+        # Odoo Datetime fields require naive UTC datetimes; strip tzinfo after computing delta.
+        now_utc = datetime.now(timezone.utc)
+        if mapping.billing_cycle == 'annual':
+            expires_at = (now_utc + relativedelta(years=1)).replace(tzinfo=None)
+        elif mapping.billing_cycle == 'monthly':
+            expires_at = (now_utc + relativedelta(months=1)).replace(tzinfo=None)
+        else:
+            raise ValueError(f"Unknown billing_cycle: {mapping.billing_cycle!r}")
+
         # Crear license
         license_key = self._generate_license_key(order_id)
         request.env['lemon_squeezy.license'].sudo().create({
@@ -227,6 +259,8 @@ class LemonSqueezyWebhookController(http.Controller):
             'seats': mapping.seats,
             'despacho_name': partner.name if mapping.seats > 1 else False,
             'status': 'active',
+            'billing_cycle': mapping.billing_cycle,  # v0.3.0: persist cycle for renewal
+            'expires_at': expires_at,                 # v0.3.0: 1 month or 1 year from now
         })
 
         event_log.write({
@@ -259,7 +293,8 @@ class LemonSqueezyWebhookController(http.Controller):
         if not license:
             event_log.write({'processing_error': f'license_not_found_for_subscription_{subscription_id}'})
             return
-        license.write({'status': 'active'})
+        license.write({'status': 'active'})  # in case it was past_due
+        self._extend_expires_at(license)      # v0.3.0: renewal extends license
         event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_payment_failed(self, event_log, payload):
@@ -299,7 +334,7 @@ class LemonSqueezyWebhookController(http.Controller):
         event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_updated(self, event_log, payload):
-        """Upgrade seats: crear nuevo sale.order con prorrata + actualizar license.seats."""
+        """Upgrade seats o cambio billing_cycle: actualizar license + nuevo sale.order."""
         subscription_id = str(payload['data'].get('id', ''))
         new_variant_id = str(payload['data']['attributes'].get('variant_id', ''))
         license = request.env['lemon_squeezy.license'].sudo().search(
@@ -312,13 +347,25 @@ class LemonSqueezyWebhookController(http.Controller):
             event_log.write({'processing_error': f'missing_variant_id_for_subscription_{subscription_id}'})
             return
         new_mapping = self._get_mapping_for_variant(new_variant_id)
-        if new_mapping and new_mapping.seats != license.seats:
-            update_vals = {'seats': new_mapping.seats}
-            # If upgrading Individual (1) → Despacho (>1), set despacho_name from partner
-            # (download controller rejects seats>1 sin despacho_name → 404 permanente)
-            if new_mapping.seats > 1 and not license.despacho_name:
-                update_vals['despacho_name'] = license.partner_id.name
+        if not new_mapping:
+            event_log.write({'processing_error': f'no_mapping_for_variant_{new_variant_id}'})
+            return
+
+        seats_changed = new_mapping.seats != license.seats
+        billing_changed = new_mapping.billing_cycle != license.billing_cycle
+
+        if seats_changed or billing_changed:
+            update_vals = {}
+            if seats_changed:
+                update_vals['seats'] = new_mapping.seats
+                # If upgrading Individual (1) → Despacho (>1), set despacho_name (P2 fix)
+                if new_mapping.seats > 1 and not license.despacho_name:
+                    update_vals['despacho_name'] = license.partner_id.name
+            if billing_changed:
+                update_vals['billing_cycle'] = new_mapping.billing_cycle
             license.write(update_vals)
+
+            # Crear sale.order diff (simplificado MVP)
             SaleOrder = request.env['sale.order'].sudo()
             so = SaleOrder.create({
                 'partner_id': license.partner_id.id,

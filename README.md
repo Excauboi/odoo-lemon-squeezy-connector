@@ -50,6 +50,30 @@ Los 3 placeholders soportados out-of-the-box (definidos como constantes en `util
 
 Ver `controllers/webhook.py` para mapping completo evento -> acción Odoo.
 
+## Subscription lifecycle (v0.3.0+)
+
+Cuando `order_created` crea un `lemon_squeezy.license`, ésta se crea con:
+- `billing_cycle` heredado del `product_mapping` (anual o mensual)
+- `expires_at = now + 1 año` (annual) o `now + 1 mes` (monthly)
+
+Cuando llega `subscription_payment_success` (LS dispara este evento cada vez que renueva la suscripción exitosamente):
+- Si `expires_at` está en el futuro → se extiende DESDE `expires_at` (+1 ciclo, no se pierden días por renewal anticipada)
+- Si `expires_at` está en el pasado (payment llegó tarde) → se extiende DESDE `now` (graceful recovery)
+
+Cuando llega `subscription_cancelled` (cliente cancela manualmente):
+- `status` → `'cancelled'` inmediato; el `is_active` computed devuelve `False` y el endpoint download responde 404
+
+El gate efectivo es `is_active = (status == 'active' AND (expires_at IS NULL OR expires_at > now))`:
+- `status == 'cancelled'` → siempre denied
+- `status == 'expired'` → siempre denied (admin manual mark)
+- `status == 'active'` + `expires_at` futuro → allowed
+- `status == 'active'` + `expires_at` pasado → denied (subscription venció sin renovar)
+- `status == 'active'` + `expires_at = NULL` → allowed perpetuamente (caso edge: license manual creada sin expiración)
+
+**Caso uso típico**: vender skill/plugin/bundle por suscripción anual a través de Lemon Squeezy. Cliente puede descargar actualizaciones cuantas veces quiera durante el año (re-fetch del bundle template actualizado en `ir.attachment`). Si renueva, sigue. Si no, expires_at pasa y el endpoint denegará.
+
+**Para "push" notificaciones de update**: añadir cron + mail.template que detecte cambios en bundle_attachment_id y notifique a partners con licenses active. Out-of-scope del módulo MVP, pero pattern documentado en `_handle_subscription_*` handlers (mail.activity ejemplo).
+
 ## Tests
 
 ```bash

@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import json
 import os
+from datetime import datetime, timedelta
 
 from odoo.tests import HttpCase, tagged
 
@@ -95,6 +96,9 @@ class TestIntegrationE2E(HttpCase):
         r3 = self._post_event('ls_subscription_payment_success.json')
         self.assertEqual(r3.status_code, 200)
         self.env.invalidate_all()
+        # v0.3.0: payment_success extended expires_at
+        license = self.env['lemon_squeezy.license'].browse(license.id)
+        self.assertGreater(license.expires_at, datetime.now() + timedelta(days=300))
 
         # Step 4: subscription_cancelled → license status=cancelled
         r4 = self._post_event('ls_subscription_cancelled.json')

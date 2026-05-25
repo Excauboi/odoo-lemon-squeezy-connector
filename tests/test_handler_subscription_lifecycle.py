@@ -5,8 +5,11 @@ ya que los handlers usan request.env (contexto HTTP) que no existe en tests unit
 """
 import json
 import os
+from datetime import datetime, timedelta, timezone
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
+from dateutil.relativedelta import relativedelta
 from odoo.tests import TransactionCase, tagged
 
 
@@ -60,6 +63,7 @@ class TestHandlerSubscriptionLifecycle(TransactionCase):
             'subscription_id': '9876543',  # P3: payment handlers lookup by subscription_id (= data.id en fixtures)
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
             'status': 'active',
         })
 
@@ -217,3 +221,67 @@ class TestHandlerSubscriptionLifecycle(TransactionCase):
 
         event_fresh = self.env['lemon_squeezy.event'].browse(event_log.id)
         self.assertEqual(event_fresh.related_partner_id, self.partner)
+
+    def test_subscription_payment_success_extends_expires_at(self):
+        """v0.3.0: payment_success renewal extends license.expires_at by 1 billing cycle."""
+        from odoo.addons.lemon_squeezy_connector.controllers.webhook import (
+            LemonSqueezyWebhookController,
+        )
+
+        # Set initial expires_at to 30 days from now (license activa, no expired)
+        initial_expires = datetime.now(timezone.utc) + timedelta(days=30)
+        # Odoo stores naive UTC; strip tzinfo
+        self.license.write({'expires_at': initial_expires.replace(tzinfo=None)})
+
+        payload = self._load_fixture('ls_subscription_payment_success.json')
+        ctrl = LemonSqueezyWebhookController()
+
+        with mock.patch(
+            'odoo.addons.lemon_squeezy_connector.controllers.webhook.request',
+            mock.MagicMock(env=self.env),
+        ):
+            event_log = self.env['lemon_squeezy.event'].create({
+                'event_id': 'evt_ext_001',
+                'event_name': 'subscription_payment_success',
+                'payload': payload,
+            })
+            ctrl._handle_subscription_payment_success(event_log, payload)
+
+        self.env.invalidate_all()
+        license_fresh = self.env['lemon_squeezy.license'].browse(self.license.id)
+        # Expected: initial_expires + 1 year (annual cycle)
+        expected = initial_expires.replace(tzinfo=None) + relativedelta(years=1)
+        diff_seconds = abs((license_fresh.expires_at - expected).total_seconds())
+        self.assertLess(diff_seconds, 300, f"expires_at {license_fresh.expires_at} not close to expected {expected}")
+
+    def test_subscription_payment_success_after_expiry_extends_from_now(self):
+        """v0.3.0: si payment_success llega después de expires_at, extend desde now (no perder días)."""
+        from odoo.addons.lemon_squeezy_connector.controllers.webhook import (
+            LemonSqueezyWebhookController,
+        )
+
+        # Set expires_at in the past
+        past_expires = datetime.now(timezone.utc) - timedelta(days=10)
+        self.license.write({'expires_at': past_expires.replace(tzinfo=None)})
+
+        payload = self._load_fixture('ls_subscription_payment_success.json')
+        ctrl = LemonSqueezyWebhookController()
+
+        with mock.patch(
+            'odoo.addons.lemon_squeezy_connector.controllers.webhook.request',
+            mock.MagicMock(env=self.env),
+        ):
+            event_log = self.env['lemon_squeezy.event'].create({
+                'event_id': 'evt_late_001',
+                'event_name': 'subscription_payment_success',
+                'payload': payload,
+            })
+            ctrl._handle_subscription_payment_success(event_log, payload)
+
+        self.env.invalidate_all()
+        license_fresh = self.env['lemon_squeezy.license'].browse(self.license.id)
+        # Expected: now + 1 year (since past_expires was already past, extend from now)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        expected = now + relativedelta(years=1)
+        diff_seconds = abs((license_fresh.expires_at - expected).total_seconds())
+        self.assertLess(diff_seconds, 300, f"expires_at {license_fresh.expires_at} not close to expected {expected}")

@@ -1,7 +1,9 @@
 import json
 import os
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+from dateutil.relativedelta import relativedelta
 from odoo.tests import TransactionCase, tagged
 
 
@@ -69,6 +71,17 @@ class TestHandlerOrderCreated(TransactionCase):
         self.assertEqual(len(licenses), 1)
         self.assertEqual(licenses.seats, 1)
         self.assertEqual(licenses.status, 'active')
+
+        # v0.3.0: license has billing_cycle + expires_at
+        self.assertEqual(licenses.billing_cycle, 'annual')
+        self.assertIsNotNone(licenses.expires_at)
+        # expires_at should be ~1 year from now (within reasonable bounds)
+        now = datetime.now(timezone.utc)
+        expected = now + relativedelta(years=1)
+        # Allow ±5 minutes tolerance for test execution time
+        # licenses.expires_at is a naive datetime in Odoo (no tz info)
+        diff_seconds = abs((licenses.expires_at - expected.replace(tzinfo=None)).total_seconds())
+        self.assertLess(diff_seconds, 300, f"expires_at {licenses.expires_at} not close to expected {expected}")
 
         # Verificar event log enlazado — refrescar cache del recordset
         self.env.invalidate_all()

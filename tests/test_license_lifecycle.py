@@ -19,6 +19,7 @@ class TestLicenseLifecycle(TransactionCase):
             'order_id': 'ord_test_001',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
         })
         self.assertEqual(lic.status, 'active')
         self.assertEqual(lic.seats, 1)
@@ -30,6 +31,7 @@ class TestLicenseLifecycle(TransactionCase):
             'order_id': 'ord_test_002',
             'partner_id': self.partner.id,
             'seats': 5,
+            'billing_cycle': 'annual',
             'despacho_name': 'Despacho Pérez & Asociados',
         })
         self.assertEqual(lic.seats, 5)
@@ -42,6 +44,7 @@ class TestLicenseLifecycle(TransactionCase):
             'order_id': 'ord_dup_001',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
         })
         with self.assertRaises(Exception):
             self.env['lemon_squeezy.license'].create({
@@ -49,6 +52,7 @@ class TestLicenseLifecycle(TransactionCase):
                 'order_id': 'ord_dup_002',
                 'partner_id': self.partner.id,
                 'seats': 1,
+                'billing_cycle': 'annual',
             })
 
     def test_license_status_transitions(self):
@@ -57,6 +61,7 @@ class TestLicenseLifecycle(TransactionCase):
             'order_id': 'ord_lc_001',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
         })
         lic.write({'status': 'cancelled'})
         self.assertEqual(lic.status, 'cancelled')
@@ -72,6 +77,7 @@ class TestLicenseLifecycle(TransactionCase):
             'order_id': 'ord_act_001',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
         })
         self.assertTrue(lic_active.is_active)
 
@@ -85,6 +91,7 @@ class TestLicenseLifecycle(TransactionCase):
             'order_id': 'ord_cancel_001',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
             'expires_at': fields.Datetime.now() + timedelta(days=30),  # future
         })
         self.assertTrue(lic_cancel.is_active)  # active + future expires → True

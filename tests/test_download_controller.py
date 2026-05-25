@@ -53,6 +53,7 @@ _Generado por LABORALIA · Order #{ORDER_ID_PLACEHOLDER} · ...
             'order_id': 'ord_cancelled_001',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
             'status': 'cancelled',
         })
         r = self.url_open('/lemon_squeezy/download/lic_cancelled_001')
@@ -64,6 +65,7 @@ _Generado por LABORALIA · Order #{ORDER_ID_PLACEHOLDER} · ...
             'order_id': 'ord-actv-123',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
             'status': 'active',
         })
         r = self.url_open('/lemon_squeezy/download/lic_active_001')
@@ -85,6 +87,7 @@ _Generado por LABORALIA · Order #{ORDER_ID_PLACEHOLDER} · ...
             'order_id': 'ord-log-001',
             'partner_id': self.partner.id,
             'seats': 1,
+            'billing_cycle': 'annual',
             'status': 'active',
         })
         self.url_open('/lemon_squeezy/download/lic_log_001')

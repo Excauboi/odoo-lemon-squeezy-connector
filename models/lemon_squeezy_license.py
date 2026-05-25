@@ -23,6 +23,16 @@ class LemonSqueezyLicense(models.Model):
         ondelete='restrict',  # no perder licencias si partner accidentalmente eliminado
     )
     seats = fields.Integer(string='Seats', default=1, required=True)
+    billing_cycle = fields.Selection(
+        [
+            ('monthly', 'Mensual'),
+            ('annual', 'Anual'),
+        ],
+        string='Billing Cycle',
+        required=True,
+        help='Subscription billing cycle. Used by payment_success handler to '
+             'extend expires_at by the right delta (+1 month or +1 year).',
+    )
     despacho_name = fields.Char(string='Despacho Name')
     status = fields.Selection([
         ('active', 'Activa'),
