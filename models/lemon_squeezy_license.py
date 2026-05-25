@@ -9,6 +9,13 @@ class LemonSqueezyLicense(models.Model):
 
     license_key = fields.Char(string='License Key', required=True)
     order_id = fields.Char(string='LS Order ID', required=True, index=True)
+    subscription_id = fields.Char(
+        string='LS Subscription ID',
+        index=True,
+        help='Lemon Squeezy subscription.id. Populated on subscription_created event. '
+             'Used as lookup key in payment_success/failed/cancelled/updated handlers '
+             '(LS payment payloads carry subscription_id not order_id).',
+    )
     partner_id = fields.Many2one(
         'res.partner',
         string='Partner',

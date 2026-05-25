@@ -57,6 +57,7 @@ class TestHandlerSubscriptionLifecycle(TransactionCase):
         self.license = self.env['lemon_squeezy.license'].create({
             'license_key': 'lic_test_fixture_001',
             'order_id': '1234567',
+            'subscription_id': '9876543',  # P3: payment handlers lookup by subscription_id (= data.id en fixtures)
             'partner_id': self.partner.id,
             'seats': 1,
             'status': 'active',
@@ -92,6 +93,8 @@ class TestHandlerSubscriptionLifecycle(TransactionCase):
         self.env.invalidate_all()
         event_fresh = self.env['lemon_squeezy.event'].browse(event_log.id)
         self.assertEqual(event_fresh.related_partner_id, self.partner)
+        lic_fresh = self.env['lemon_squeezy.license'].browse(self.license.id)
+        self.assertEqual(lic_fresh.subscription_id, '9876543')  # P3: subscription_id persisted by handler
 
     def test_subscription_payment_success_keeps_active(self):
         """_handle_subscription_payment_success mantiene/restablece license.status='active'."""
@@ -148,9 +151,9 @@ class TestHandlerSubscriptionLifecycle(TransactionCase):
         ])
         self.assertEqual(len(after), before_count + 1)
 
-        # Verificar que el summary menciona el order_id
-        new_activity = after.filtered(lambda a: '1234567' in (a.summary or ''))
-        self.assertTrue(new_activity, "La actividad debe mencionar el order_id en el summary")
+        # Verificar que el summary menciona el subscription_id (P3: handlers usan subscription_id, no order_id)
+        new_activity = after.filtered(lambda a: '9876543' in (a.summary or ''))
+        self.assertTrue(new_activity, "La actividad debe mencionar el subscription_id en el summary")
 
         event_fresh = self.env['lemon_squeezy.event'].browse(event_log.id)
         self.assertEqual(event_fresh.related_partner_id, self.partner)
@@ -206,6 +209,7 @@ class TestHandlerSubscriptionLifecycle(TransactionCase):
         # License seats actualizado a 3
         lic_fresh = self.env['lemon_squeezy.license'].browse(self.license.id)
         self.assertEqual(lic_fresh.seats, 3)
+        self.assertEqual(lic_fresh.despacho_name, 'Despacho Test')  # P2: despacho_name set on upgrade Individual → Despacho
 
         # Nuevo sale.order creado
         so_after = self.env['sale.order'].search([('partner_id', '=', self.partner.id)])

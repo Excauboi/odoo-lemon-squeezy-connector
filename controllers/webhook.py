@@ -237,34 +237,38 @@ class LemonSqueezyWebhookController(http.Controller):
     def _handle_subscription_created(self, event_log, payload):
         # Buscar sale.order del order_created previo (LS dispara order_created + subscription_created)
         order_id = str(payload['data']['attributes'].get('order_id', ''))
+        subscription_id = str(payload['data'].get('id', ''))
         if not order_id:
             raise ValueError("subscription_created sin order_id")
+        if not subscription_id:
+            raise ValueError("subscription_created sin data.id (subscription_id)")
         license = request.env['lemon_squeezy.license'].sudo().search(
             [('order_id', '=', order_id)], limit=1
         )
         if not license:
             raise ValueError(f"subscription_created: license not found for order {order_id}")
-        # Para MVP, basta con confirmar que la license está active + log
+        # Persist subscription_id para lookup en payment_*/cancelled/updated handlers (Codex P3)
+        license.write({'subscription_id': subscription_id})
         event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_payment_success(self, event_log, payload):
-        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        subscription_id = str(payload['data'].get('id', ''))
         license = request.env['lemon_squeezy.license'].sudo().search(
-            [('order_id', '=', order_id)], limit=1
+            [('subscription_id', '=', subscription_id)], limit=1
         )
         if not license:
-            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            event_log.write({'processing_error': f'license_not_found_for_subscription_{subscription_id}'})
             return
         license.write({'status': 'active'})
         event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_payment_failed(self, event_log, payload):
-        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        subscription_id = str(payload['data'].get('id', ''))
         license = request.env['lemon_squeezy.license'].sudo().search(
-            [('order_id', '=', order_id)], limit=1
+            [('subscription_id', '=', subscription_id)], limit=1
         )
         if not license:
-            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            event_log.write({'processing_error': f'license_not_found_for_subscription_{subscription_id}'})
             return
         res_model_id = request.env['ir.model'].sudo().search(
             [('model', '=', 'res.partner')], limit=1
@@ -273,7 +277,7 @@ class LemonSqueezyWebhookController(http.Controller):
             'res_model_id': res_model_id,
             'res_id': license.partner_id.id,
             'activity_type_id': request.env.ref('mail.mail_activity_data_todo').id,
-            'summary': f'LS payment failed — Order {order_id}',
+            'summary': f'LS payment failed — Subscription {subscription_id}',
             'note': f'Lemon Squeezy reportó subscription_payment_failed para license {license.license_key}. Revisar.',
             'user_id': int(
                 request.env['ir.config_parameter'].sudo().get_param(
@@ -284,32 +288,37 @@ class LemonSqueezyWebhookController(http.Controller):
         event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_cancelled(self, event_log, payload):
-        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        subscription_id = str(payload['data'].get('id', ''))
         license = request.env['lemon_squeezy.license'].sudo().search(
-            [('order_id', '=', order_id)], limit=1
+            [('subscription_id', '=', subscription_id)], limit=1
         )
         if not license:
-            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            event_log.write({'processing_error': f'license_not_found_for_subscription_{subscription_id}'})
             return
         license.write({'status': 'cancelled'})
         event_log.write({'related_partner_id': license.partner_id.id})
 
     def _handle_subscription_updated(self, event_log, payload):
         """Upgrade seats: crear nuevo sale.order con prorrata + actualizar license.seats."""
-        order_id = str(payload['data']['attributes'].get('order_id', ''))
+        subscription_id = str(payload['data'].get('id', ''))
         new_variant_id = str(payload['data']['attributes'].get('variant_id', ''))
         license = request.env['lemon_squeezy.license'].sudo().search(
-            [('order_id', '=', order_id)], limit=1
+            [('subscription_id', '=', subscription_id)], limit=1
         )
         if not license:
-            event_log.write({'processing_error': f'license_not_found_for_order_{order_id}'})
+            event_log.write({'processing_error': f'license_not_found_for_subscription_{subscription_id}'})
             return
         if not new_variant_id:
-            event_log.write({'processing_error': f'missing_variant_id_for_order_{order_id}'})
+            event_log.write({'processing_error': f'missing_variant_id_for_subscription_{subscription_id}'})
             return
         new_mapping = self._get_mapping_for_variant(new_variant_id)
         if new_mapping and new_mapping.seats != license.seats:
-            license.write({'seats': new_mapping.seats})
+            update_vals = {'seats': new_mapping.seats}
+            # If upgrading Individual (1) → Despacho (>1), set despacho_name from partner
+            # (download controller rejects seats>1 sin despacho_name → 404 permanente)
+            if new_mapping.seats > 1 and not license.despacho_name:
+                update_vals['despacho_name'] = license.partner_id.name
+            license.write(update_vals)
             SaleOrder = request.env['sale.order'].sudo()
             so = SaleOrder.create({
                 'partner_id': license.partner_id.id,
@@ -318,7 +327,7 @@ class LemonSqueezyWebhookController(http.Controller):
                     'product_uom_qty': 1,
                     'price_unit': new_mapping.product_id.list_price,
                 })],
-                'origin': f'LS Subscription Update {order_id}',
+                'origin': f'LS Subscription Update {subscription_id}',
             })
             so.action_confirm()
             event_log.write({

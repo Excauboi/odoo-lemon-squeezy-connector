@@ -68,7 +68,12 @@ class TestIntegrationE2E(HttpCase):
         )
 
     def test_full_lifecycle_order_then_subscription(self):
-        """Ciclo completo: order_created → payment_success → cancelled."""
+        """Ciclo completo: order_created → subscription_created → payment_success → cancelled.
+
+        P3 fix: subscription_payment_success/cancelled ahora lookup por subscription_id (data.id).
+        El flujo realista incluye subscription_created (que persiste subscription_id en la license)
+        antes de los eventos de pago/cancelación.
+        """
         # Step 1: order_created → crea partner + SO + license active
         r1 = self._post_event('ls_order_created.json')
         self.assertEqual(r1.status_code, 200)
@@ -79,28 +84,36 @@ class TestIntegrationE2E(HttpCase):
         self.assertEqual(len(license), 1)
         self.assertEqual(license.status, 'active')
 
-        # Step 2: subscription_payment_success → license sigue active
-        r2 = self._post_event('ls_subscription_payment_success.json')
+        # Step 2: subscription_created (P3: link subscription_id a license para lookup en payment handlers)
+        r2 = self._post_event('ls_subscription_created.json')
         self.assertEqual(r2.status_code, 200)
         self.env.invalidate_all()
+        license = self.env['lemon_squeezy.license'].browse(license.id)
+        self.assertEqual(license.subscription_id, '9876543')  # populated by handler
 
-        # Step 3: subscription_cancelled → license status=cancelled
-        r3 = self._post_event('ls_subscription_cancelled.json')
+        # Step 3: subscription_payment_success → license sigue active (lookup por subscription_id)
+        r3 = self._post_event('ls_subscription_payment_success.json')
         self.assertEqual(r3.status_code, 200)
         self.env.invalidate_all()
-        # Re-browse: el recordset capturado en step 1 puede estar stale aunque invalidemos
+
+        # Step 4: subscription_cancelled → license status=cancelled
+        r4 = self._post_event('ls_subscription_cancelled.json')
+        self.assertEqual(r4.status_code, 200)
+        self.env.invalidate_all()
         license = self.env['lemon_squeezy.license'].browse(license.id)
         self.assertEqual(license.status, 'cancelled')
 
-        # Verificar los 3 eventos loggeados sin processing_error
+        # Verificar los 4 eventos loggeados sin processing_error
         events = self.env['lemon_squeezy.event'].sudo().search([])
         # Filtramos a los event_ids exactos de las fixtures (evita contaminación de otros tests)
         relevant_events = events.filtered(
-            lambda e: e.event_id in ('evt_fix_oc_001', 'evt_fix_sps_001', 'evt_fix_sca_001')
+            lambda e: e.event_id in (
+                'evt_fix_oc_001', 'evt_fix_sc_001', 'evt_fix_sps_001', 'evt_fix_sca_001'
+            )
         )
         self.assertEqual(
-            len(relevant_events), 3,
-            f"Esperados 3 eventos, encontrados: {relevant_events.mapped('event_id')}",
+            len(relevant_events), 4,
+            f"Esperados 4 eventos, encontrados: {relevant_events.mapped('event_id')}",
         )
         # Ningún evento con processing_error (todos los handlers terminaron sin excepción)
         errored = relevant_events.filtered(lambda e: e.processing_error)
